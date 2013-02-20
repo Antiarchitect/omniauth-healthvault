@@ -31,43 +31,83 @@ module OmniAuth
 
       def callback_phase
         if request.params['target'] == 'AppAuthSuccess'
-          shared_secret = Base64.encode64(SecureRandom.hex)
-          app_auth_token = create_authenticated_session_token(shared_secret)
-          get_person_info
+          @certificate = File.read(options[:cert_file])
+          @wctoken = request.params['wctoken']
+          @shared_secret = Base64.encode64(SecureRandom.hex)
+          @app_auth_token = create_authenticated_session_token
+          Rails.logger.info("PERSON INFO: #{get_person_info}")
         end
         super
       end
 
       private
 
-      def create_authenticated_session_token(shared_secret)
-        body = build_create_authenticated_session_token_request(shared_secret)
+      def send_request(body)
         conn = ::Faraday.new(url: options[:platform_url]) do |faraday|
           faraday.request  :url_encoded             # form-encode POST params
           faraday.response :logger                  # log requests to STDOUT
           faraday.adapter  ::Faraday.default_adapter  # make requests with Net::HTTP
         end
-        response = conn.post do |i|
+        conn.post do |i|
           i.headers['Content-Type'] = 'text/xml'
           i.body = body
         end
+      end
+
+      def create_authenticated_session_token
+        response = send_request(build_create_authenticated_session_token_request)
         parse_create_authenticated_session_token_response(response.body)
       end
 
       def get_person_info
-
+        body = build_get_person_info_request
+        Rails.logger.info "BODY: #{body}"
+        response = send_request(body)
+        parse_get_person_info_response(response.body)
       end
 
-      def build_create_authenticated_session_token_request(shared_secret)
+      def build_get_person_info_request
+        info = ::Builder::XmlMarkup.new.info
+        header = ::Builder::XmlMarkup.new.header do |header|
+          header.method 'GetPersonInfo'
+          header.tag! 'method-version', 1
+          header.tag! 'auth-session' do
+            header.tag! 'auth-token', @app_auth_token
+            header.tag! 'user-auth-token', @wctoken
+          end
+          header.language 'en'
+          header.country 'US'
+          header.tag! 'msg-time', Time.now.to_datetime.rfc3339
+          header.tag! 'msg-ttl', 36000
+          header.version PLATFORM_VERSION
+          header.tag! 'info-hash' do
+            header.tag! 'hash-data', Base64.encode64(OpenSSL::Digest::SHA1.digest(info)).strip, 'algName' => 'SHA1'
+          end
+        end
+        body = ::Builder::XmlMarkup.new
+        body.tag!('wc-request:request', 'xmlns:wc-request' => 'urn:com.microsoft.wc.request') do
+          body.auth do
+            body.tag! 'hmac-data', Base64.encode64(OpenSSL::HMAC.digest(OpenSSL::Digest::SHA1.new, Base64.decode64(@shared_secret), header)).strip, 'algName' => 'HMACSHA1'
+          end
+          body << header
+          body << info
+        end
+      end
+
+      def parse_get_person_info_response(response_body)
+        result = ::MultiXml.parse(response_body)
+        result['response'] rescue nil
+      end
+
+      def build_create_authenticated_session_token_request
         content = ::Builder::XmlMarkup.new
         content = content.content do
           content.tag! 'app-id', options[:app_id]
           content.tag! 'shared-secret' do
-            content.tag! 'hmac-alg', shared_secret, 'algName' => 'HMACSHA1'
+            content.tag! 'hmac-alg', @shared_secret, 'algName' => 'HMACSHA1'
           end
         end
-        pem = File.read(options[:cert_file])
-        signature = Base64.encode64(OpenSSL::PKey::RSA.new(pem).sign(OpenSSL::Digest::SHA1.new, content))
+        signature = Base64.encode64(OpenSSL::PKey::RSA.new(@certificate).sign(OpenSSL::Digest::SHA1.new, content))
         body = ::Builder::XmlMarkup.new
         body.tag!('wc-request:request', 'xmlns:wc-request' => 'urn:com.microsoft.wc.request') do
           body.header do
