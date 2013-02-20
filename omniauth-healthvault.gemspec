@@ -16,5 +16,8 @@ Gem::Specification.new do |gem|
   gem.test_files    = gem.files.grep(%r{^(test|spec|features)/})
   gem.require_paths = ["lib"]
 
+  gem.add_dependency 'builder', '~> 3.0'
+  gem.add_dependency 'faraday', '~> 0.8'
+  gem.add_dependency 'multi_xml', '~> 0.5'
   gem.add_dependency 'omniauth', '~> 1.1.0'
 end
