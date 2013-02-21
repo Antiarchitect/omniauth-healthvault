@@ -8,8 +8,8 @@ Gem::Specification.new do |gem|
   gem.version       = Omniauth::Healthvault::VERSION
   gem.authors       = ["Andrey Voronkov"]
   gem.email         = ["andrey.voronkov@medm.com"]
-  gem.description   = %q{Microsoft HealthVault strategy for OmniAuth}
-  gem.summary       = %q{Microsoft HealthVault strategy for OmniAuth}
+  gem.description   = %q{This is the unofficial OmniAuth strategy for authenticating to Microsoft HealthVault.}
+  gem.summary       = %q{This is the unofficial OmniAuth strategy for authenticating to Microsoft HealthVault.}
   gem.homepage      = "https://github.com/Antiarchitect/omniauth-healthvault"
   gem.files         = `git ls-files`.split($/)
   gem.executables   = gem.files.grep(%r{^bin/}).map{ |f| File.basename(f) }

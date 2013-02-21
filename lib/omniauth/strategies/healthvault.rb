@@ -9,7 +9,9 @@ module OmniAuth
     # http://msdn.microsoft.com/library/jj863179
     #
     # @example Basic Usage
-    #   use OmniAuth::Strategies::HealthVault, 'app_id', 'pkcs_12_location'
+    #   use OmniAuth::Builder do
+    #     provider :healthvault, ENV['HEALTHVAULT_APP_ID'], ENV['HEALTHVAULT_PKCS12_CERT_LOCATION']
+    #   end
     #
     class Healthvault
       include OmniAuth::Strategy
