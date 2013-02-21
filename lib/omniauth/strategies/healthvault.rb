@@ -4,27 +4,26 @@ require 'multi_xml'
 
 module OmniAuth
   module Strategies
-    # Authenticate to Microsoft HealthVault service utilizing OAuth 2.0 and retrieve basic user information.
+    # Authenticate to Microsoft HealthVault service and retrieve basic user information.
     # Documentation available here:
     # http://msdn.microsoft.com/library/jj863179
     #
     # @example Basic Usage
-    #   use OmniAuth::Strategies::HealthVault, 'app_id', [:settings]
+    #   use OmniAuth::Strategies::HealthVault, 'app_id', 'pkcs_12_location'
     #
     class Healthvault
       include OmniAuth::Strategy
 
       PLATFORM_VERSION = '1.12.1002.8529'
 
-      args [:app_id, :pubkey_thumbprint, :cert_file]
+      args [:app_id, :pkcs_12_location]
 
       option :name, 'healthvault'
 
       option :app_id, nil
 
-      option :platform_url
-      option :shell_url, 'https://account.healthvault.com/redirect.aspx'
       option :platform_url, 'https://platform.healthvault.com/platform/wildcat.ashx'
+      option :shell_url, 'https://account.healthvault.com/redirect.aspx'
 
       def request_phase
         url = "#{options[:shell_url]}?target=AUTH&targetqs=appid%3D#{options[:app_id]}"
@@ -33,9 +32,9 @@ module OmniAuth
 
       def callback_phase
         if request.params['target'] == 'AppAuthSuccess'
-          @certificate = File.read(options[:cert_file])
+          @certificate = OpenSSL::PKCS12.new(File.read(options[:pkcs_12_location]), nil)
           @wctoken = request.params['wctoken']
-          @shared_secret = Base64.encode64(SecureRandom.hex)
+          @shared_secret = Base64.strict_encode64(SecureRandom.hex)
           @app_auth_token = create_authenticated_session_token
           @raw_info = get_person_info
         end
@@ -66,9 +65,11 @@ module OmniAuth
       end
 
       def get_person_info
-        body = build_get_person_info_request
-        response = send_request(body)
-        parse_get_person_info_response(response.body)
+        if @app_auth_token.present?
+          body = build_get_person_info_request
+          response = send_request(body)
+          parse_get_person_info_response(response.body)
+        end
       end
 
       def build_get_person_info_request
@@ -86,13 +87,13 @@ module OmniAuth
           header.tag! 'msg-ttl', 36000
           header.version PLATFORM_VERSION
           header.tag! 'info-hash' do
-            header.tag! 'hash-data', Base64.encode64(OpenSSL::Digest::SHA1.digest(info)).strip, 'algName' => 'SHA1'
+            header.tag! 'hash-data', Base64.strict_encode64(OpenSSL::Digest::SHA1.digest(info)), 'algName' => 'SHA1'
           end
         end
         body = ::Builder::XmlMarkup.new
         body.tag!('wc-request:request', 'xmlns:wc-request' => 'urn:com.microsoft.wc.request') do
           body.auth do
-            body.tag! 'hmac-data', Base64.encode64(OpenSSL::HMAC.digest(OpenSSL::Digest::SHA1.new, Base64.decode64(@shared_secret), header)).strip, 'algName' => 'HMACSHA1'
+            body.tag! 'hmac-data', Base64.strict_encode64(OpenSSL::HMAC.digest(OpenSSL::Digest::SHA1.new, Base64.decode64(@shared_secret), header)), 'algName' => 'HMACSHA1'
           end
           body << header
           body << info
@@ -112,7 +113,6 @@ module OmniAuth
             content.tag! 'hmac-alg', @shared_secret, 'algName' => 'HMACSHA1'
           end
         end
-        signature = Base64.encode64(OpenSSL::PKey::RSA.new(@certificate).sign(OpenSSL::Digest::SHA1.new, content))
         body = ::Builder::XmlMarkup.new
         body.tag!('wc-request:request', 'xmlns:wc-request' => 'urn:com.microsoft.wc.request') do
           body.header do
@@ -130,7 +130,8 @@ module OmniAuth
               body.tag! 'app-id', options[:app_id]
               body.credential do
                 body.appserver do
-                  body.sig signature, 'digestMethod' => 'SHA1', 'sigMethod' => 'RSA-SHA1', 'thumbprint' => options[:pubkey_thumbprint]
+                  body.sig Base64.strict_encode64(@certificate.key.sign(OpenSSL::Digest::SHA1.new, content)), 'digestMethod' => 'SHA1',
+                           'sigMethod' => 'RSA-SHA1', 'thumbprint' => OpenSSL::Digest::SHA1.hexdigest(@certificate.certificate.to_der).upcase
                   body << content
                 end
               end
