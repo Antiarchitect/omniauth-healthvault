@@ -18,6 +18,8 @@ module OmniAuth
 
       args [:app_id, :pubkey_thumbprint, :cert_file]
 
+      option :name, 'healthvault'
+
       option :app_id, nil
 
       option :platform_url
@@ -35,18 +37,22 @@ module OmniAuth
           @wctoken = request.params['wctoken']
           @shared_secret = Base64.encode64(SecureRandom.hex)
           @app_auth_token = create_authenticated_session_token
-          Rails.logger.info("PERSON INFO: #{get_person_info}")
+          @raw_info = get_person_info
         end
         super
       end
+
+      uid { @raw_info['person_id'] }
+      info { { name: @raw_info['name'] } }
+      extra { { raw_info: @raw_info } }
 
       private
 
       def send_request(body)
         conn = ::Faraday.new(url: options[:platform_url]) do |faraday|
-          faraday.request  :url_encoded             # form-encode POST params
-          faraday.response :logger                  # log requests to STDOUT
-          faraday.adapter  ::Faraday.default_adapter  # make requests with Net::HTTP
+          faraday.request  :url_encoded
+          faraday.response :logger
+          faraday.adapter  ::Faraday.default_adapter
         end
         conn.post do |i|
           i.headers['Content-Type'] = 'text/xml'
@@ -61,7 +67,6 @@ module OmniAuth
 
       def get_person_info
         body = build_get_person_info_request
-        Rails.logger.info "BODY: #{body}"
         response = send_request(body)
         parse_get_person_info_response(response.body)
       end
@@ -96,7 +101,7 @@ module OmniAuth
 
       def parse_get_person_info_response(response_body)
         result = ::MultiXml.parse(response_body)
-        result['response'] rescue nil
+        result['response']['info']['person_info'] rescue nil
       end
 
       def build_create_authenticated_session_token_request
