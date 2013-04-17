@@ -38,7 +38,7 @@ module OmniAuth
           @wctoken = request.params['wctoken']
           @shared_secret = Base64.strict_encode64(SecureRandom.hex)
           @app_auth_token = create_authenticated_session_token
-          @raw_info = get_person_info
+          @raw_info = get_person_info || {}
         end
         super
       end
