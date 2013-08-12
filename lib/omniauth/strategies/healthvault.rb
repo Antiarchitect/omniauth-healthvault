@@ -40,10 +40,10 @@ module OmniAuth
           @app_auth_token = create_authenticated_session_token
           @raw_info = get_person_info
         end
+        @raw_info ||= {}
         super
       end
 
-      @raw_info ||= {}
       uid { @raw_info['person_id'] }
       info { { name: @raw_info['name'] } }
       extra { { raw_info: @raw_info } }
